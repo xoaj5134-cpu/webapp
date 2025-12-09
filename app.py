@@ -1,4 +1,5 @@
 import io
+import os
 from typing import Dict, List, Tuple
 
 import matplotlib
@@ -22,7 +23,7 @@ if "answers" not in st.session_state:
 
 
 # =========================================
-# mbti.csv 로딩 함수 (clean_mbti 형식 그대로 사용)
+# mbti.csv 로딩 (clean_mbti 형식 그대로 사용)
 #  - 필요한 컬럼:
 #    id, dimension_pair, question,
 #    option_a_text, option_a_code,
@@ -64,11 +65,65 @@ def load_mbti(csv_path: str = "mbti.csv") -> pd.DataFrame:
     return df
 
 
-df = load_mbti()  # 전역에서 한 번 로딩
+df = load_mbti()  # 문항 데이터
 
 
 # =========================================
-# MBTI 설명 & 진로 추천 (간단 버전)
+# mbti_end.xlsx 로딩 (유형별 불릿 설명)
+#  - 엑셀 구조 예시:
+#    A열: ISTJ   B열: "＊부끄럼을 많이 탄다." (헤더)
+#    C열: ISFJ   D열: "＊온순하다..."       (헤더)
+#    각 불릿들은 B, D열 아래 행들에 계속 들어 있음
+# =========================================
+@st.cache_data
+def load_mbti_profiles(xlsx_path: str = "mbti_end.xlsx") -> Dict[str, List[str]]:
+    if not os.path.exists(xlsx_path):
+        return {}  # 파일 없으면 빈 dict 반환
+
+    df_end = pd.read_excel(xlsx_path)
+    # 불필요한 Unnamed 컬럼 있으면 제거
+    df_end = df_end.loc[:, ~df_end.columns.str.contains("Unnamed")]
+
+    profiles: Dict[str, List[str]] = {}
+    cols = list(df_end.columns)
+
+    # 열을 2개씩 묶어서 [유형열, 불릿열] 구조로 파싱
+    for i in range(0, len(cols), 2):
+        type_col = cols[i]
+        if i + 1 >= len(cols):
+            continue
+        bullet_header = cols[i + 1]
+
+        type_code = str(type_col).strip()
+        if not type_code or type_code.lower() == "nan":
+            continue
+
+        bullets: List[str] = []
+
+        # 헤더에 있는 첫 불릿
+        if isinstance(bullet_header, str):
+            first = bullet_header.strip()
+            if first and first.lower() != "nan":
+                bullets.append(first)
+
+        # 아래 행들에 있는 불릿들
+        col_series = df_end.iloc[:, i + 1]
+        for v in col_series.dropna():
+            vs = str(v).strip()
+            if vs and vs not in bullets:
+                bullets.append(vs)
+
+        if bullets:
+            profiles[type_code] = bullets
+
+    return profiles
+
+
+MBTI_PROFILES = load_mbti_profiles()  # 예: {"ISTJ": ["＊...", "＊..."], "ISFJ": [...]}
+
+
+# =========================================
+# MBTI 한줄 설명 & 진로 추천 (기본틀)
 # =========================================
 MBTI_DESCRIPTIONS: Dict[str, str] = {
     "INTJ": "전략적·계획적인 성향으로, 구조화된 환경에서 장기적인 목표를 세우는 데 강점이 있습니다.",
@@ -98,7 +153,7 @@ MBTI_RECOMMENDATIONS: Dict[str, Dict[str, List[str]]] = {
         "majors": ["심리학", "사회복지학", "국어국문·영문학", "콘텐츠·문화예술 관련 전공"],
         "careers": ["상담·복지 분야", "작가·에디터", "콘텐츠 기획자", "교육 관련 직무"],
     },
-    # 필요하면 다른 유형 추가 가능
+    # 필요하면 다른 유형도 여기에 추가
 }
 
 
@@ -250,7 +305,7 @@ with col_left:
                 key=f"q_{row['id']}",
             )
 
-            if st.button("다음 문항 ➜", key="btn_next_question"):
+            if st.button("다음 문항 ➜", key=f"btn_next_{row['id']}"):
                 if choice == row["option_a_text"]:
                     st.session_state.answers[row["id"]] = row["option_a_code"]
                 else:
@@ -275,16 +330,28 @@ with col_left:
             mbti_type, scores = compute_mbti(df, st.session_state.answers)
             st.success(f"현재 성향에 기반한 MBTI 유형은 **{mbti_type}** 입니다.")
 
+            # 한 줄 요약 설명
             desc = MBTI_DESCRIPTIONS.get(
-                mbti_type, "해당 유형에 대한 설명 정보가 준비 중입니다."
+                mbti_type, "해당 유형에 대한 기본 설명 정보가 준비 중입니다."
             )
-            st.markdown("#### 유형 설명")
+            st.markdown("#### 유형 설명 (요약)")
             st.write(desc)
 
+            # 📌 엑셀 기반 세부 특징
+            bullets = MBTI_PROFILES.get(mbti_type)
+            if bullets:
+                st.markdown("#### 성향 특징 (검사지 기반 설명)")
+                for b in bullets:
+                    st.markdown(f"- {b}")
+            else:
+                st.info("이 유형에 대한 추가 세부 설명(엑셀 기반)은 아직 등록되지 않았습니다.")
+
+            # 진로 추천
             rec = MBTI_RECOMMENDATIONS.get(mbti_type, {})
             major_list = rec.get("majors", [])
             career_list = rec.get("careers", [])
 
+            st.markdown("---")
             c1, c2 = st.columns(2)
             with c1:
                 st.markdown("#### 추천 전공 예시")
