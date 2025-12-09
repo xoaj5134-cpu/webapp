@@ -52,7 +52,7 @@ def load_mbti(csv_path: str = "mbti.csv") -> pd.DataFrame:
     if missing:
         raise ValueError(
             f"mbti.csv에 다음 컬럼이 필요합니다: {missing}\n"
-            "현재 파일이 내가 준 clean_mbti 템플릿과 같은 구조인지 확인해 주세요."
+            "현재 파일이 clean_mbti 템플릿과 같은 구조인지 확인해 주세요."
         )
 
     # id 정수형, question 비어있으면 'n번 문항'으로 채우기
@@ -98,7 +98,7 @@ MBTI_RECOMMENDATIONS: Dict[str, Dict[str, List[str]]] = {
         "majors": ["심리학", "사회복지학", "국어국문·영문학", "콘텐츠·문화예술 관련 전공"],
         "careers": ["상담·복지 분야", "작가·에디터", "콘텐츠 기획자", "교육 관련 직무"],
     },
-    # ... 필요하면 다른 유형도 추가 가능
+    # 필요하면 다른 유형 추가
 }
 
 
@@ -211,12 +211,16 @@ with col_right:
         st.session_state.page = "test"
         st.session_state.idx = 0
         st.session_state.answers = {}
+        st.rerun()
     if st.button("결과 보기"):
         st.session_state.page = "result"
+        st.rerun()
     if st.button("해석 가이드"):
         st.session_state.page = "guide"
+        st.rerun()
     if st.button("앱 정보"):
         st.session_state.page = "info"
+        st.rerun()
 
 
 # =========================================
@@ -250,13 +254,13 @@ with col_left:
                     st.session_state.answers[row["id"]] = row["option_b_code"]
 
                 st.session_state.idx += 1
-                st.experimental_rerun()
+                st.rerun()
 
         else:
             st.success("✔ 모든 문항을 완료했습니다.")
             if st.button("결과 보기"):
                 st.session_state.page = "result"
-                st.experimental_rerun()
+                st.rerun()
 
     # 2) 결과 페이지
     elif st.session_state.page == "result":
