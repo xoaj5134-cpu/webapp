@@ -1,8 +1,10 @@
 import io
 from typing import Dict, List, Tuple
 
-import pandas as pd
+import matplotlib
+matplotlib.use("Agg")  # Streamlit Cloud 등 GUI 없는 환경에서 사용
 import matplotlib.pyplot as plt
+import pandas as pd
 import streamlit as st
 
 # =========================================
@@ -14,7 +16,7 @@ st.set_page_config(
 )
 
 st.title("🎓 고등학생 진로 MBTI 검사")
-st.caption("학교/상담센터에서 활용 가능한 간이 MBTI 진로 성향 검사")
+st.caption("학교·상담센터에서 활용 가능한 진로 탐색용 MBTI 간이 검사")
 
 st.sidebar.title("메뉴")
 page = st.sidebar.radio("페이지 이동", ["검사하기", "결과 해석 가이드", "앱 안내"])
@@ -29,10 +31,34 @@ page = st.sidebar.radio("페이지 이동", ["검사하기", "결과 해석 가�
 
 @st.cache_data
 def load_mbti_items(csv_path: str = "mbti.csv") -> pd.DataFrame:
-    df = pd.read_csv(csv_path, encoding="cp949")
-    ...
-    return df
+    """
+    mbti.csv 파일을 읽어옵니다.
+    - 기본적으로 Windows/Excel에서 저장된 한국어 CSV는 CP949 인코딩을 많이 사용합니다.
+    """
+    try:
+        # 1차 시도: CP949 (한국어 Windows 환경에서 가장 흔함)
+        df = pd.read_csv(csv_path, encoding="cp949")
+    except UnicodeDecodeError:
+        # 2차 시도: UTF-8 (혹시 UTF-8로 저장된 경우)
+        df = pd.read_csv(csv_path, encoding="utf-8")
 
+    required_cols = [
+        "id",
+        "dimension_pair",
+        "question",
+        "option_a_text",
+        "option_a_code",
+        "option_b_text",
+        "option_b_code",
+    ]
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"mbti.csv에 다음 컬럼이 필요합니다: {missing}\n"
+            "예시: id, dimension_pair, question, option_a_text, "
+            "option_a_code, option_b_text, option_b_code"
+        )
+    return df
 
 
 # =========================================
@@ -137,7 +163,7 @@ def compute_mbti_type_from_answers(
     """
     answer_codes: question id -> 선택된 코드(E/I/S/N/T/F/J/P 중 하나)
     """
-    scores: Dict[str, int] = {k: 0 for k in list("EISNTFJP")}
+    scores: Dict[str, int] = {k: 0 for k in ["E", "I", "S", "N", "T", "F", "J", "P"]}
 
     for _, row in df_items.iterrows():
         qid = row["id"]
@@ -163,6 +189,7 @@ def create_result_figure(
     """
     MBTI 결과를 요약한 PNG 이미지를 생성하여 bytes로 반환
     """
+    # 폰트 설정(서버 환경에 따라 한글 폰트가 없을 수 있으나, 없는 경우에도 동작 자체는 합니다)
     plt.rcParams["font.family"] = plt.rcParams.get("font.family", "sans-serif")
 
     fig, ax = plt.subplots(figsize=(7, 10))
@@ -170,7 +197,7 @@ def create_result_figure(
     fig.suptitle("고등학생 진로 MBTI 결과 요약", fontsize=16, fontweight="bold")
 
     # 상단 MBTI 타입 표시
-    ax.text(
+    fig.text(
         0.5,
         0.92,
         f"MBTI 유형: {mbti_type}",
@@ -178,24 +205,22 @@ def create_result_figure(
         va="center",
         fontsize=18,
         fontweight="bold",
-        transform=fig.transFigure,
     )
 
     # 축별 점수 바 차트
-    pairs = [("E", "I"), ("S", "N"), ("T", "F"), ("J", "P")]
     y_labels = ["E / I", "S / N", "T / F", "J / P"]
-    e_scores = [scores["E"], scores["S"], scores["T"], scores["J"]]
-    i_scores = [scores["I"], scores["N"], scores["F"], scores["P"]]
+    front_scores = [scores["E"], scores["S"], scores["T"], scores["J"]]
+    back_scores = [scores["I"], scores["N"], scores["F"], scores["P"]]
 
     ax.barh(
         [y + 0.15 for y in range(len(y_labels))],
-        e_scores,
+        front_scores,
         height=0.3,
         label="앞 글자(E/S/T/J)",
     )
     ax.barh(
         [y - 0.15 for y in range(len(y_labels))],
-        i_scores,
+        back_scores,
         height=0.3,
         label="뒷 글자(I/N/F/P)",
     )
@@ -224,7 +249,6 @@ def create_result_figure(
         color="gray",
     )
 
-    # figure 안 오른쪽 영역에 텍스트 박스
     fig.text(
         0.52,
         0.25,
@@ -252,7 +276,7 @@ if page == "검사하기":
     st.markdown(
         """
 고등학생을 대상으로 한 **진로 탐색용 MBTI 성향 검사**입니다.  
-각 문항에 대해, **현재 나에게 더 잘 맞는 선택지**를 골라 주세요.
+각 문항에 대해, 현재 나에게 더 잘 맞는 선택지를 골라 주세요.
 
 > ※ 본 검사는 학교·상담센터에서 참고용으로 활용하기 위한 간이 검사이며,  
 >   정식 임상 도구가 아님을 안내드립니다.
@@ -279,7 +303,6 @@ if page == "검사하기":
             a_code = str(row["option_a_code"]).strip().upper()
             b_code = str(row["option_b_code"]).strip().upper()
 
-            # 선택지는 텍스트만 보이게 하고, 나중에 어떤 코드를 선택했는지만 저장
             choice = st.radio(
                 f"{qid}. {question}",
                 [a_text, b_text],
@@ -293,7 +316,6 @@ if page == "검사하기":
         submitted = st.form_submit_button("검사 결과 확인")
 
     if submitted:
-        # 모든 문항에 답했는지 간단 체크
         if len(answer_codes) != len(df_mbti):
             st.warning("모든 문항에 응답해 주셔야 정확한 결과를 확인할 수 있습니다.")
         else:
@@ -305,7 +327,7 @@ if page == "검사하기":
                 mbti_type,
                 "해당 유형에 대한 기본 설명 정보가 아직 등록되어 있지 않습니다.",
             )
-            st.markdown(f"#### 유형 설명")
+            st.markdown("#### 유형 설명")
             st.write(desc)
 
             # 진로 추천
@@ -362,6 +384,7 @@ if page == "검사하기":
                 mime="image/png",
             )
 
+
 # =========================================
 # 페이지 2: 결과 해석 가이드
 # =========================================
@@ -379,8 +402,8 @@ MBTI 결과는 **성격 유형을 정확히 단정 짓기보다는, 현재 나�
     st.markdown(
         """
 **E / I (에너지 방향)**  
-- **E(외향)**: 사람들과 함께 있을 때 에너지를 얻는 편, 활동적・표현적  
-- **I(내향)**: 혼자 있는 시간에서 에너지를 얻는 편, 사색적・조용한 환경 선호  
+- **E(외향)**: 사람들과 함께 있을 때 에너지를 얻는 편, 활동적·표현적  
+- **I(내향)**: 혼자 있는 시간에서 에너지를 얻는 편, 사색적·조용한 환경 선호  
 
 **S / N (정보를 받아들이는 방식)**  
 - **S(감각)**: 현재의 사실, 구체적인 정보, 경험을 중시  
@@ -411,7 +434,8 @@ MBTI 결과는 **성격 유형을 정확히 단정 짓기보다는, 현재 나�
    - 예: ENFP라도 공학 계열에서 창의성을 발휘하거나, INTP라도 예술/콘텐츠 분야에서 분석적 사고를 활용할 수 있습니다.
 
 4. **검사 결과는 대화의 출발점**입니다.  
-   - 담임교사, 진로 상담 선생님, 부모님과 함께 결과를 보며 '왜 이런 결과가 나왔는지', '어떤 상황에서 나에게 더 맞는지'를 이야기해 보는 것이 중요합니다.
+   - 담임교사, 진로 상담 선생님, 보호자와 함께 결과를 보며  
+     ‘왜 이런 결과가 나왔는지’, ‘어떤 상황에서 나에게 더 맞는지’를 이야기해 보는 것이 중요합니다.
 """
     )
 
@@ -426,6 +450,7 @@ MBTI 결과는 **성격 유형을 정확히 단정 짓기보다는, 현재 나�
 """
     )
 
+
 # =========================================
 # 페이지 3: 앱 안내
 # =========================================
@@ -434,7 +459,7 @@ elif page == "앱 안내":
 
     st.markdown(
         """
-이 웹앱은 **Streamlit**을 활용하여 제작된,  
+이 웹앱은 **Streamlit**을 활용하여 제작된  
 고등학생 대상 **진로 탐색용 MBTI 검사 도구(간이판)** 입니다.
 
 #### 주요 특징
@@ -454,8 +479,8 @@ elif page == "앱 안내":
     st.markdown(
         """
 #### 기술 요소
-- Python, Streamlit
-- Pandas를 활용한 CSV 문항 관리
-- Matplotlib를 활용한 결과 요약 이미지 생성
+- Python, Streamlit  
+- Pandas를 활용한 CSV 문항 관리  
+- Matplotlib(Agg backend)를 활용한 결과 요약 이미지 생성
 """
     )
