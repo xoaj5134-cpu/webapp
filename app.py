@@ -29,24 +29,10 @@ page = st.sidebar.radio("페이지 이동", ["검사하기", "결과 해석 가�
 
 @st.cache_data
 def load_mbti_items(csv_path: str = "mbti.csv") -> pd.DataFrame:
-    df = pd.read_csv(csv_path)
-    # 필수 컬럼 확인
-    required_cols = [
-        "id",
-        "dimension_pair",
-        "question",
-        "option_a_text",
-        "option_a_code",
-        "option_b_text",
-        "option_b_code",
-    ]
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        raise ValueError(
-            f"mbti.csv에 다음 컬럼이 필요합니다: {missing}\n"
-            "예시: id, dimension_pair, question, option_a_text, option_a_code, option_b_text, option_b_code"
-        )
+    df = pd.read_csv(csv_path, encoding="cp949")
+    ...
     return df
+
 
 
 # =========================================
