@@ -23,15 +23,14 @@ if "answers" not in st.session_state:
 
 
 # =========================================
-# mbti.csv 로딩 (clean_mbti 형식 그대로 사용)
-#  - 필요한 컬럼:
+# 1) mbti.csv 로딩 (clean_mbti 형식)
+#    필요한 컬럼:
 #    id, dimension_pair, question,
 #    option_a_text, option_a_code,
 #    option_b_text, option_b_code
 # =========================================
 @st.cache_data
 def load_mbti(csv_path: str = "mbti.csv") -> pd.DataFrame:
-    # 인코딩 자동 처리
     try:
         df = pd.read_csv(csv_path, encoding="utf-8-sig")
     except UnicodeDecodeError:
@@ -56,7 +55,6 @@ def load_mbti(csv_path: str = "mbti.csv") -> pd.DataFrame:
             "현재 파일이 clean_mbti 템플릿과 같은 구조인지 확인해 주세요."
         )
 
-    # id 정수형, question 비어있으면 'n번 문항'으로 채우기
     df["id"] = df["id"].astype(int)
     df["question"] = df["question"].astype(str)
     df.loc[df["question"].isin(["nan", "", "None"]), "question"] = df["id"].apply(
@@ -65,65 +63,44 @@ def load_mbti(csv_path: str = "mbti.csv") -> pd.DataFrame:
     return df
 
 
-df = load_mbti()  # 문항 데이터
+df = load_mbti()
 
 
 # =========================================
-# mbti_end.xlsx 로딩 (유형별 불릿 설명)
-#  - 엑셀 구조 예시:
-#    A열: ISTJ   B열: "＊부끄럼을 많이 탄다." (헤더)
-#    C열: ISFJ   D열: "＊온순하다..."       (헤더)
-#    각 불릿들은 B, D열 아래 행들에 계속 들어 있음
+# 2) mbti_end.xlsx 로딩 (type, bullet 두 컬럼)
 # =========================================
 @st.cache_data
 def load_mbti_profiles(xlsx_path: str = "mbti_end.xlsx") -> Dict[str, List[str]]:
     if not os.path.exists(xlsx_path):
-        return {}  # 파일 없으면 빈 dict 반환
+        return {}
 
-    df_end = pd.read_excel(xlsx_path)
-    # 불필요한 Unnamed 컬럼 있으면 제거
-    df_end = df_end.loc[:, ~df_end.columns.str.contains("Unnamed")]
+    # openpyxl 필요 (requirements.txt에 openpyxl 추가)
+    profiles_df = pd.read_excel(xlsx_path)
+
+    required_cols = ["type", "bullet"]
+    missing = [c for c in required_cols if c not in profiles_df.columns]
+    if missing:
+        raise ValueError(
+            f"mbti_end.xlsx에 다음 컬럼이 필요합니다: {missing}\n"
+            "엑셀의 첫 행을 type, bullet 로 맞춰 주세요."
+        )
 
     profiles: Dict[str, List[str]] = {}
-    cols = list(df_end.columns)
-
-    # 열을 2개씩 묶어서 [유형열, 불릿열] 구조로 파싱
-    for i in range(0, len(cols), 2):
-        type_col = cols[i]
-        if i + 1 >= len(cols):
+    for _, row in profiles_df.iterrows():
+        t = str(row["type"]).strip().upper()
+        b = str(row["bullet"]).strip()
+        if not t or t.lower() == "nan" or not b or b.lower() == "nan":
             continue
-        bullet_header = cols[i + 1]
-
-        type_code = str(type_col).strip()
-        if not type_code or type_code.lower() == "nan":
-            continue
-
-        bullets: List[str] = []
-
-        # 헤더에 있는 첫 불릿
-        if isinstance(bullet_header, str):
-            first = bullet_header.strip()
-            if first and first.lower() != "nan":
-                bullets.append(first)
-
-        # 아래 행들에 있는 불릿들
-        col_series = df_end.iloc[:, i + 1]
-        for v in col_series.dropna():
-            vs = str(v).strip()
-            if vs and vs not in bullets:
-                bullets.append(vs)
-
-        if bullets:
-            profiles[type_code] = bullets
+        profiles.setdefault(t, []).append(b)
 
     return profiles
 
 
-MBTI_PROFILES = load_mbti_profiles()  # 예: {"ISTJ": ["＊...", "＊..."], "ISFJ": [...]}
+MBTI_PROFILES = load_mbti_profiles()
 
 
 # =========================================
-# MBTI 한줄 설명 & 진로 추천 (기본틀)
+# 3) MBTI 한줄 설명 & 진로 추천
 # =========================================
 MBTI_DESCRIPTIONS: Dict[str, str] = {
     "INTJ": "전략적·계획적인 성향으로, 구조화된 환경에서 장기적인 목표를 세우는 데 강점이 있습니다.",
@@ -153,12 +130,12 @@ MBTI_RECOMMENDATIONS: Dict[str, Dict[str, List[str]]] = {
         "majors": ["심리학", "사회복지학", "국어국문·영문학", "콘텐츠·문화예술 관련 전공"],
         "careers": ["상담·복지 분야", "작가·에디터", "콘텐츠 기획자", "교육 관련 직무"],
     },
-    # 필요하면 다른 유형도 여기에 추가
+    # 필요한 유형 더 추가 가능
 }
 
 
 # =========================================
-# MBTI 계산 & 결과 이미지 생성
+# 4) MBTI 계산 & 결과 이미지 생성
 # =========================================
 def compute_mbti(df_items: pd.DataFrame, answers: Dict[int, str]) -> Tuple[str, Dict[str, int]]:
     scores = {k: 0 for k in ["E", "I", "S", "N", "T", "F", "J", "P"]}
@@ -255,7 +232,7 @@ def create_result_figure(
 
 
 # =========================================
-# 오른쪽 메뉴 UI (각 버튼에 key 부여)
+# 5) 오른쪽 메뉴 UI
 # =========================================
 with st.container():
     col_left, col_right = st.columns([4, 1])
@@ -282,11 +259,11 @@ with col_right:
 
 
 # =========================================
-# 메인 화면 (왼쪽 영역)
+# 6) 메인 화면 (왼쪽 영역)
 # =========================================
 with col_left:
 
-    # 1) 검사 페이지 – 한 문항씩
+    # 검사 페이지 – 한 문항씩
     if st.session_state.page == "test":
         st.header("📘 MBTI 진로 성향 검사")
 
@@ -320,7 +297,7 @@ with col_left:
                 st.session_state.page = "result"
                 st.rerun()
 
-    # 2) 결과 페이지
+    # 결과 페이지
     elif st.session_state.page == "result":
         st.header("📊 검사 결과")
 
@@ -330,21 +307,22 @@ with col_left:
             mbti_type, scores = compute_mbti(df, st.session_state.answers)
             st.success(f"현재 성향에 기반한 MBTI 유형은 **{mbti_type}** 입니다.")
 
-            # 한 줄 요약 설명
+            # 요약 설명
             desc = MBTI_DESCRIPTIONS.get(
                 mbti_type, "해당 유형에 대한 기본 설명 정보가 준비 중입니다."
             )
             st.markdown("#### 유형 설명 (요약)")
             st.write(desc)
 
-            # 📌 엑셀 기반 세부 특징
-            bullets = MBTI_PROFILES.get(mbti_type)
+            # 엑셀 기반 상세 불릿 설명
+            bullets = MBTI_PROFILES.get(mbti_type, [])
             if bullets:
                 st.markdown("#### 성향 특징 (검사지 기반 설명)")
                 for b in bullets:
                     st.markdown(f"- {b}")
             else:
-                st.info("이 유형에 대한 추가 세부 설명(엑셀 기반)은 아직 등록되지 않았습니다.")
+                st.info("이 유형에 대한 상세 불릿 설명은 아직 등록되지 않았습니다.\n"
+                        "mbti_end.xlsx에 type, bullet 형식으로 내용을 추가해 주세요.")
 
             # 진로 추천
             rec = MBTI_RECOMMENDATIONS.get(mbti_type, {})
@@ -395,7 +373,7 @@ with col_left:
                 mime="image/png",
             )
 
-    # 3) 해석 가이드
+    # 해석 가이드
     elif st.session_state.page == "guide":
         st.header("📘 MBTI 결과 해석 가이드")
         st.write(
@@ -403,7 +381,7 @@ with col_left:
             "- 진로 선택 시에는 **흥미, 가치관, 능력, 환경** 등을 함께 고려해야 하며, MBTI는 참고 자료로 활용해 주세요.\n"
         )
 
-    # 4) 앱 정보
+    # 앱 정보
     elif st.session_state.page == "info":
         st.header("ℹ️ 앱 정보")
         st.write("고등학생 대상 진로 탐색용 MBTI 간이 검사 웹앱입니다.")
