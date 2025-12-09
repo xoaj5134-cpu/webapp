@@ -98,7 +98,7 @@ MBTI_RECOMMENDATIONS: Dict[str, Dict[str, List[str]]] = {
         "majors": ["심리학", "사회복지학", "국어국문·영문학", "콘텐츠·문화예술 관련 전공"],
         "careers": ["상담·복지 분야", "작가·에디터", "콘텐츠 기획자", "교육 관련 직무"],
     },
-    # 필요하면 다른 유형 추가
+    # 필요하면 다른 유형 추가 가능
 }
 
 
@@ -200,25 +200,28 @@ def create_result_figure(
 
 
 # =========================================
-# 오른쪽 메뉴 UI
+# 오른쪽 메뉴 UI (각 버튼에 key 부여)
 # =========================================
 with st.container():
     col_left, col_right = st.columns([4, 1])
 
 with col_right:
     st.markdown("### 📌 메뉴")
-    if st.button("검사하기"):
+    if st.button("검사하기", key="menu_test"):
         st.session_state.page = "test"
         st.session_state.idx = 0
         st.session_state.answers = {}
         st.rerun()
-    if st.button("결과 보기"):
+
+    if st.button("결과 보기", key="menu_result"):
         st.session_state.page = "result"
         st.rerun()
-    if st.button("해석 가이드"):
+
+    if st.button("해석 가이드", key="menu_guide"):
         st.session_state.page = "guide"
         st.rerun()
-    if st.button("앱 정보"):
+
+    if st.button("앱 정보", key="menu_info"):
         st.session_state.page = "info"
         st.rerun()
 
@@ -247,7 +250,7 @@ with col_left:
                 key=f"q_{row['id']}",
             )
 
-            if st.button("다음 문항 ➜"):
+            if st.button("다음 문항 ➜", key="btn_next_question"):
                 if choice == row["option_a_text"]:
                     st.session_state.answers[row["id"]] = row["option_a_code"]
                 else:
@@ -258,7 +261,7 @@ with col_left:
 
         else:
             st.success("✔ 모든 문항을 완료했습니다.")
-            if st.button("결과 보기"):
+            if st.button("결과 보기", key="btn_complete_result"):
                 st.session_state.page = "result"
                 st.rerun()
 
